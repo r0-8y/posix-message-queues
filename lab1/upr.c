@@ -30,7 +30,7 @@ int main(void)
     struct my_msgbuf buf_pos, buf_sem;
     int id_upr, id_sem;
     key_t key_upr = Q_POS_UPR, key_sem = Q_UPR_SEM;
-    int t = 10;
+    int t = 15;
     // 1 = horizontal, -1 = vertical
     int direction = 1 /* , waiting = -1 */;
 
@@ -48,7 +48,7 @@ int main(void)
 
     while (1)
     {
-        if (t == 10 /* 5 || t == 30 */)
+        if (t == 15 /* 5 || t == 30 */)
         {
             buf_sem.mtype = MSG_TYPE_SET_SEM;
             buf_sem.mtext[0] = direction;
@@ -102,11 +102,11 @@ int main(void)
 
         if (--t == 0)
         {
-            t = 10; /* waiting > 0 ? 30 : 15; */
+            t = 15; /* waiting > 0 ? 30 : 15; */
             //waiting = -1;
             direction *= -1;
             // cekamo izmedu ciklusa da svi produ kroz raskrizje
-            sleep(5);
+            sleep(3);
         }
     }
 

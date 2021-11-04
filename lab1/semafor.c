@@ -52,16 +52,16 @@ int main(void)
             time_counter = 0;
             direction = buf_sem.mtext[0];
 
-            while (++time_counter != time)
+            while (--time)
             {
-                for (int i = 0; i < 10; i++)
+                for (int i = 0; i < 5; i++)
                 {
-
                     if ((msgrcv(id_sem, (struct msgbuf *)&buf_sem, MSG_SIZE, direction > 0 ? MSG_TYPE_H : MSG_TYPE_V, IPC_NOWAIT)) == -1)
                     {
                     }
                     else
                     {
+                        //time_counter++;
                         buf_pos.mtype = direction > 0 ? MSG_TYPE_GO_H : MSG_TYPE_GO_V;
                         if ((msgsnd(id_sem, (struct msgbuf *)&buf_pos, MSG_SIZE, 0)) == -1)
                         {
@@ -69,6 +69,8 @@ int main(void)
                         }
                     }
                 }
+                /* printf("Pustio sam %d sudionika u smijeru %d.\n", time_counter, direction);
+                time_counter = 0; */
                 sleep(1);
             }
         }

@@ -84,7 +84,7 @@ int main(void)
 
             // ceka zeleno
             //printf("Automobil %d čeka zeleno.\n", id);
-            if (position % 2 != 0)
+            if (position == 1 || position == 3)
             {
                 if ((msgrcv(id_sem, (struct msgbuf *)&buf, MSG_SIZE, MSG_TYPE_GO_V, 0)) == -1)
                 {
@@ -129,7 +129,7 @@ int main(void)
         ++id;
     }
 
-    wait(NULL);
+    //wait(NULL);
 
     return 0;
 }

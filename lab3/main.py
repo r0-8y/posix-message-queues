@@ -20,7 +20,7 @@ class DB:
 
 
 if __name__ == '__main__':
-    db = DB(load=2)
+    db = DB(load=3)
     with concurrent.futures.ThreadPoolExecutor() as executor:
         gui = executor.submit(print_state, db)
         passenger = executor.submit(spawn_passenger, db)

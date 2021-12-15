@@ -46,6 +46,8 @@ def simulate_elevator(db):
                 db.elevator.target_floors.add(passenger.destination)
         if len(db.elevator.target_floors) > 0:
             target_floor = db.elevator.target_floors.pop()
+            if target_floor == db.elevator.floor:
+                arrived(db)
             while db.elevator.floor != target_floor:
                 if target_floor < db.elevator.floor:
                     db.elevator.direction = 'D'

@@ -24,8 +24,8 @@ pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 struct task_descriptor
 {
-    unsigned int task_id;
-    unsigned int task_duration;
+    int task_id;
+    int task_duration;
     char shared_memory_name[128];
 };
 

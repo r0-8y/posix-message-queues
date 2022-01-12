@@ -34,7 +34,7 @@ struct args
 
 // FIFO list implementation
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t cond;
+pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 
 struct node
 {
@@ -74,9 +74,30 @@ void enqueue(struct queue *queue, struct task_descriptor *element)
     pthread_mutex_unlock(&mutex);
 }
 
+int is_empty(struct queue *queue)
+{
+    if (queue->head == NULL)
+    {
+        return 1;
+    }
+    else
+    {
+        return 0;
+    }
+}
+
 struct task_descriptor *dequeue(struct queue *queue)
 {
     pthread_mutex_lock(&mutex);
+    while (is_empty(queue))
+    {
+        pthread_cond_wait(&cond, &mutex);
+    }
+    if (is_empty(queue))
+    {
+        return NULL;
+    }
+
     struct task_descriptor *element = queue->head->data;
     queue->N -= 1;
     queue->M -= element->task_duration;
@@ -97,21 +118,11 @@ struct task_descriptor *dequeue(struct queue *queue)
     return element;
 }
 
-int is_empty(struct queue *queue)
-{
-    if (queue->head == queue->tail)
-    {
-        return 1;
-    }
-    else
-    {
-        return 0;
-    }
-}
-
 void *reciever(void *args)
 {
-    // struct args arguments = *(struct args *)args;
+    struct args arguments = *(struct args *)args;
+    printf("M:%d\n", arguments.M);
+    printf("N:%d\n", arguments.N);
 
     // making the shared memory name string
     char name_buffer[128];
@@ -131,75 +142,81 @@ void *reciever(void *args)
     else
     {
         char message[MSG_MAXMSGSZ];
-        int msgs = 0;
-        while (msgs < 3)
+        int num_of_msgs = 0, durations_sum = 0;
+        while (1)
         {
-            int msg_len = mq_receive(mqdes, message, MSG_MAXMSGSZ, &msg_prio);
-            if (msg_len < 0)
+            while (num_of_msgs < arguments.N || durations_sum < arguments.M)
             {
-                // just wait for a message, dont raise exceptions
-            }
-            else
-            {
-                msgs++;
-                int id, duration;
-                char name[128];
-                sscanf(message, "%d %d %s", &id, &duration, name);
-                printf("P: zaprimio %d %d %s\n", id, duration, name);
+                int msg_len = mq_receive(mqdes, message, MSG_MAXMSGSZ, &msg_prio);
+                if (msg_len < 0)
+                {
+                    // just wait for a message, dont raise exceptions
+                }
+                else
+                {
+                    num_of_msgs++;
+                    int id, duration;
+                    char name[128];
+                    sscanf(message, "%d %d %s", &id, &duration, name);
+                    durations_sum += duration;
+                    printf("P: zaprimio %d %d %s\n", id, duration, name);
 
-                struct task_descriptor *desc = (struct task_descriptor *)malloc(sizeof(struct task_descriptor));
-                desc->task_id = id;
-                desc->task_duration = duration;
-                strcpy(desc->shared_memory_name, name);
-                enqueue(&queue, desc);
+                    struct task_descriptor *desc = (struct task_descriptor *)malloc(sizeof(struct task_descriptor));
+                    desc->task_id = id;
+                    desc->task_duration = duration;
+                    strcpy(desc->shared_memory_name, name);
+                    enqueue(&queue, desc);
+                    printf("%d\n", num_of_msgs);
+                    printf("%d\n", durations_sum);
+                }
             }
+            num_of_msgs = durations_sum = 0;
+            pthread_cond_broadcast(&cond);
         }
     }
+    printf("Reciever gotov\n");
 }
 
 void *worker(void *args)
 {
-    sleep(5);
+    struct task_descriptor *t_d;
     while (1)
     {
-        if (is_empty(&queue) != 1)
+
+        t_d = dequeue(&queue);
+
+        int shared_memory_id;
+
+        // writing to shared memory
+        shared_memory_id = shm_open(t_d->shared_memory_name, O_RDWR, 00600);
+
+        struct task_description
         {
-            struct task_descriptor *t_d = dequeue(&queue);
+            struct task_descriptor t_d;
+            int data_array[t_d->task_duration];
+        };
 
-            int shared_memory_id;
-
-            // writing to shared memory
-            shared_memory_id = shm_open(t_d->shared_memory_name, O_RDWR, 00600);
-
-            struct task_description
-            {
-                struct task_descriptor t_d;
-                int data_array[t_d->task_duration];
-            };
-
-            // printf("Shared memory id: %d\n", shared_memory_id);
-            // printf("Shared memory name: %s\n", t_d->shared_memory_name);
-
-            /* if (shared_memory_id == -1 || ftruncate(shared_memory_id, sizeof(struct task_description )) == -1)
-            {
-                perror("server:shm_open/ftruncate");
-                exit(1);
-            } */
-
-            struct task_description *description;
-            description = mmap(NULL, sizeof(struct task_description), PROT_READ | PROT_WRITE, MAP_SHARED, shared_memory_id, 0);
-            if (description == (void *)-1)
-            {
-                perror("server:mmap");
-                exit(1);
-            }
-
-            for (int i = 0; i < t_d->task_duration; i++)
-            {
-                printf("R%d: id:%d obrada podatka: %d (%d/%d)\n", t_d->task_id, t_d->task_id, description->data_array[i], i + 1, t_d->task_duration);
-                sleep(1);
-            }
+        if (shared_memory_id == -1 || ftruncate(shared_memory_id, sizeof(struct task_description)) == -1)
+        {
+            perror("server:shm_open/ftruncate");
+            exit(1);
         }
+
+        struct task_description *description;
+        description = mmap(NULL, sizeof(struct task_description), PROT_READ | PROT_WRITE, MAP_SHARED, shared_memory_id, 0);
+        if (description == (void *)-1)
+        {
+            perror("server:mmap");
+            exit(1);
+        }
+
+        for (int i = 0; i < t_d->task_duration; i++)
+        {
+            printf("R%d: id:%d obrada podatka: %d (%d/%d)\n", t_d->task_id, t_d->task_id, description->data_array[i], i + 1, t_d->task_duration);
+            sleep(1);
+        }
+
+        sleep(1);
     }
 }
 
@@ -226,9 +243,6 @@ int main(int argc, char *argv[])
         return -1;
     }
 
-    // wait until reciever thread finishes
-    pthread_join(reciever_thread, NULL);
-
     pthread_t worker_threads[arguments.N];
 
     for (int i = 0; i < arguments.N; i++)
@@ -239,6 +253,9 @@ int main(int argc, char *argv[])
             return -1;
         }
     }
+
+    // wait until reciever thread finishes
+    pthread_join(reciever_thread, NULL);
 
     // wait until all worker thread finish
     for (int i = 0; i < arguments.N; i++)

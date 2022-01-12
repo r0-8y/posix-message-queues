@@ -94,10 +94,6 @@ void *generator(void *args)
         perror("generator:mq_open");
         exit(1);
     }
-    else
-    {
-        printf("Generator opened the queue\n");
-    }
 
     // generating J tasks of maximum K duration
     struct task_descriptor desc;
@@ -154,6 +150,12 @@ void *generator(void *args)
         }
         else
         {
+            printf("G: posao %d %d %s [ ", desc.task_id, desc.task_duration, desc.shared_memory_name);
+            for(int i = 0; i < desc.task_duration; i++)
+            {
+                printf("%d ", description->data_array[i]);
+            }
+            printf("]\n");
             sleep(1);
         }
     }
@@ -180,7 +182,7 @@ int main(int argc, char *argv[])
     // wait until created thread finishes
     pthread_join(generator_thread, NULL);
 
-    printf("Generator done!\n");
+    printf("Generator zavrsio!\n");
 
     return 0;
 }

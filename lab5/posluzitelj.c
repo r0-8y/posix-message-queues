@@ -53,7 +53,7 @@ void *server(void *args)
     }
     else
     {
-        printf("Server opened the queue\n");
+        // all good
     }
 
     char message[MSG_MAXMSGSZ];
@@ -62,15 +62,12 @@ void *server(void *args)
         int msg_len = mq_receive(mqdes, message, MSG_MAXMSGSZ, &msg_prio);
         if (msg_len < 0)
         {
-            // perror("mq_receive");
-            // exit(1);
+            // just wait for a message
         } else {
             int id, duration;
-            char *name;
+            char name[128];
             sscanf(message, "%d %d %s", &id, &duration, name); 
-            printf("Task id: %d\n", id);
-            printf("Task duration: %d\n", duration);
-            printf("Shared memory segment: %s\n", name);
+            printf("P: zaprimio %d %d %s\n", id, duration, name);
         }
     }
 }

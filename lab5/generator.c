@@ -19,14 +19,14 @@ pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 #define SHARED_MEMORY_NAME getenv("SRSV_LAB5")
 #define SHARED_MEMORY_SIZE sizeof(struct shared)
-#define MSG_MAXMSGS  10
+#define MSG_MAXMSGS 10
 #define MSG_MAXMSGSZ 256
 
 struct task_descriptor
 {
     unsigned int task_id;
     unsigned int task_duration;
-    const char *shared_memory_name;
+    char shared_memory_name[128];
 };
 
 struct args
@@ -56,14 +56,14 @@ void *generator(void *args)
     shared_memory_id = shm_open(name_buffer, O_CREAT | O_RDWR, 00600);
     if (shared_memory_id == -1 || ftruncate(shared_memory_id, SHARED_MEMORY_SIZE) == -1)
     {
-        perror("shm_open/ftruncate");
+        perror("generator:shm_open/ftruncate");
         exit(1);
     }
 
     pointer = mmap(NULL, SHARED_MEMORY_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, shared_memory_id, 0);
     if (pointer == (void *)-1)
     {
-        perror("mmap");
+        perror("generator:mmap");
         exit(1);
     }
 
@@ -107,15 +107,14 @@ void *generator(void *args)
         desc.task_duration = random() % arguments.K + 1;
 
         // making the shared memory name string for every task
-        char shared_task[128], id_buffer[10];
-        strcpy(shared_task, name_buffer);
-        strcat(shared_task, "-");
+        char id_buffer[10];
+        strcpy(desc.shared_memory_name, name_buffer);
+        strcat(desc.shared_memory_name, "-");
         snprintf(id_buffer, 10, "%d", id);
-        strcat(shared_task, id_buffer);
-        desc.shared_memory_name = shared_task;
+        strcat(desc.shared_memory_name, id_buffer);
 
         // writing to shared memory
-        shared_memory_id = shm_open(shared_task, O_CREAT | O_RDWR, 00600);
+        shared_memory_id = shm_open(desc.shared_memory_name, O_CREAT | O_RDWR, 00600);
         struct task_description
         {
             struct task_descriptor t_d;
@@ -123,15 +122,15 @@ void *generator(void *args)
         };
         if (shared_memory_id == -1 || ftruncate(shared_memory_id, sizeof(struct task_description)) == -1)
         {
-            perror("shm_open/ftruncate");
+            perror("generator:shm_open/ftruncate");
             exit(1);
         }
 
         struct task_description *description;
         description = mmap(NULL, sizeof(struct task_description), PROT_READ | PROT_WRITE, MAP_SHARED, shared_memory_id, 0);
-        if (pointer == (void *)-1)
+        if (description == (void *)-1)
         {
-            perror("mmap");
+            perror("generator:mmap");
             exit(1);
         }
 
@@ -145,13 +144,13 @@ void *generator(void *args)
         sprintf(message, "%d %d %s", desc.task_id, desc.task_duration, desc.shared_memory_name);
         if (mq_send(mqdes, message, MSG_MAXMSGSZ, msg_prio) == -1)
         {
-            perror("mq_send");
+            perror("generator:mq_send");
             exit(1);
         }
         else
         {
             printf("G: posao %d %d %s [ ", desc.task_id, desc.task_duration, desc.shared_memory_name);
-            for(int i = 0; i < desc.task_duration; i++)
+            for (int i = 0; i < desc.task_duration; i++)
             {
                 printf("%d ", description->data_array[i]);
             }
@@ -182,7 +181,7 @@ int main(int argc, char *argv[])
     // wait until created thread finishes
     pthread_join(generator_thread, NULL);
 
-    printf("Generator zavrsio!\n");
+    printf("Generator gotov\n");
 
     return 0;
 }

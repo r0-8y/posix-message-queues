@@ -32,10 +32,11 @@ struct args
     unsigned int N, M;
 };
 
-// FIFO list implementation
+// needed for synchronisation
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 
+// FIFO list implementation
 struct node
 {
     struct task_descriptor *data;
@@ -118,11 +119,21 @@ struct task_descriptor *dequeue(struct queue *queue)
     return element;
 }
 
+int num_of_msgs = 0, durations_sum = 0;
+
+void sig_handler(int signum)
+{
+    if (is_empty(&queue) != 1)
+    {
+        printf("P: pokrecem zaostale poslove (nakon isteka vise od 30 sekundi)\n");
+        pthread_cond_broadcast(&cond);
+        num_of_msgs = durations_sum = 0;
+    }
+}
+
 void *reciever(void *args)
 {
     struct args arguments = *(struct args *)args;
-    printf("M:%d\n", arguments.M);
-    printf("N:%d\n", arguments.N);
 
     // making the shared memory name string
     char name_buffer[128];
@@ -142,7 +153,7 @@ void *reciever(void *args)
     else
     {
         char message[MSG_MAXMSGSZ];
-        int num_of_msgs = 0, durations_sum = 0;
+        signal(SIGALRM, sig_handler); // Register signal handler
         while (1)
         {
             while (num_of_msgs < arguments.N || durations_sum < arguments.M)
@@ -154,6 +165,7 @@ void *reciever(void *args)
                 }
                 else
                 {
+                    alarm(30); // Scheduled alarm after 30 seconds
                     num_of_msgs++;
                     int id, duration;
                     char name[128];
@@ -166,23 +178,31 @@ void *reciever(void *args)
                     desc->task_duration = duration;
                     strcpy(desc->shared_memory_name, name);
                     enqueue(&queue, desc);
-                    printf("%d\n", num_of_msgs);
-                    printf("%d\n", durations_sum);
                 }
             }
             num_of_msgs = durations_sum = 0;
             pthread_cond_broadcast(&cond);
         }
     }
-    printf("Reciever gotov\n");
+}
+
+void loop(unsigned long long int iterations)
+{
+    while (iterations)
+    {
+        asm volatile("" ::
+                         : "memory");
+        iterations--;
+    }
 }
 
 void *worker(void *args)
 {
+    unsigned long long int *iterations = (unsigned long long int *)args;
+
     struct task_descriptor *t_d;
     while (1)
     {
-
         t_d = dequeue(&queue);
 
         int shared_memory_id;
@@ -213,10 +233,9 @@ void *worker(void *args)
         for (int i = 0; i < t_d->task_duration; i++)
         {
             printf("R%d: id:%d obrada podatka: %d (%d/%d)\n", t_d->task_id, t_d->task_id, description->data_array[i], i + 1, t_d->task_duration);
-            sleep(1);
+            loop(*iterations);
         }
-
-        sleep(1);
+        printf("R%d: id:%d obrada gotova\n", t_d->task_id, t_d->task_id);
     }
 }
 
@@ -235,6 +254,21 @@ int main(int argc, char *argv[])
     queue.N = arguments.N;
     queue.M = arguments.M;
 
+    // finding number of iterations needed for one second on this cpu
+    unsigned long long int iterations = 1000000;
+    double time_elapsed = 0;
+    struct timespec start, stop;
+    while ((time_elapsed / 1e6) < 1)
+    {
+        clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &start);
+        loop(iterations);
+        clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &stop);
+        time_elapsed = (stop.tv_sec - start.tv_sec) * 1e6 + (stop.tv_nsec - start.tv_nsec) / 1e3;
+        iterations *= 1.1;
+    }
+
+    printf("Found the number of iterations needed for one second: %llu\n", iterations);
+
     pthread_t reciever_thread;
 
     if (pthread_create(&reciever_thread, NULL, reciever, (void *)&arguments) != 0)
@@ -247,7 +281,7 @@ int main(int argc, char *argv[])
 
     for (int i = 0; i < arguments.N; i++)
     {
-        if (pthread_create(&worker_threads[i], NULL, worker, (void *)&queue) != 0)
+        if (pthread_create(&worker_threads[i], NULL, worker, (void *)&iterations) != 0)
         {
             perror("ERROR: pthread_create:");
             return -1;
